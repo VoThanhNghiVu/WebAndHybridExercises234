@@ -20,80 +20,15 @@ const REFRESH_TOKEN_SECRET = "refresh-token-secret";
 
 let refreshTokens = [];
 const messages = [
-    "Early bird catches the worm",
-    "Opportunity knocks but once",
-    "Make hay while the sun shines"
+  "Early bird catches the worm",
+  "Opportunity knocks but once",
+  "Make hay while the sun shines",
 ];
 
 const users = [
   { username: "admin", password: "adminpass", role: "admin" },
   { username: "user", password: "userpass", role: "user" },
 ];
-
-app.get('/', (req, res) => {
-    res.send('Hello World!')
-  })
-
-// POST /signin (Logs in a user and returns an access token (15 minutes) and a refresh token
-app.post("/signin", (req, res) => {
-  const { username, password } = req.body;
-
-  if (!username || !password) {
-    return res
-      .status(400)
-      .json({ error: "Username and password are required" });
-  }
-
-  const user = users.find(
-    (u) => u.username === username && u.password === password
-  );
-  if (!user) {
-    return res.status(401).json({ error: "Invalid credentials" });
-  }
-
-  const payload = { username: user.username, role: user.role }; // Create payload for JWT
-  const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: "15m" }); // Create an access token (expires in 15 minutes)
-  const refreshToken = jwt.sign(payload, REFRESH_TOKEN_SECRET, { expiresIn: "4h" }); // Create a refresh token (expires in 4 hours)
-  refreshTokens.push(refreshToken); // Store refresh token for later validation
-
-  res.json({ accessToken, refreshToken });
-});
-
-// POST /token
-app.post("/token", (req, res) => {
-  const { refreshToken } = req.body;
-
-  if (!refreshToken) {
-    return res.status(401).json({ error: "Refresh token is required" });
-  }
-
-  if (!refreshTokens.includes(refreshToken)) {
-    return res.status(403).json({ error: "Invalid refresh token" });
-  }
-
-  jwt.verify(refreshToken, REFRESH_TOKEN_SECRET, (err, user) => {
-    if (err) {
-      return res.status(403).json({ error: "Invalid refresh token" });
-    }
-
-    // Generate new access token using the payload from refresh token
-    const payload = { username: user.username, role: user.role };
-    const newAccessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: "15m" });
-    res.json({ accessToken: newAccessToken });
-  });
-});
-
-// POST /logout
-app.post("/logout", (req, res) => {
-  const { refreshToken } = req.body;
-
-  if (!refreshToken) {
-    return res.status(400).json({ error: "Refresh token is required" });
-  }
-
-  refreshTokens = refreshTokens.filter((token) => token !== refreshToken); // Remove the refresh token from our store
-  res.json({ message: "Logged out successfully" });
-});
 
 // Middleware to authenticate access tokens (JWT)
 const authenticateJWT = (req, res, next) => {
@@ -116,8 +51,61 @@ const authenticateJWT = (req, res, next) => {
   }
 };
 
+app.get("/", (req, res) => {
+  res.send("Hello World!");
+});
 
-// GET /posts (Returns an array of messages, accessible to all users with a valid access token)
+// Logs in a user and returns an access token (15 minutes) and a refresh token
+app.post("/signin", (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res
+      .status(400)
+      .json({ error: "Username and password are required" });
+  }
+
+  const user = users.find(
+    (u) => u.username === username && u.password === password
+  );
+  if (!user) {
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
+
+  const payload = { username: user.username, role: user.role }; // Create payload for JWT
+  const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: "15m" }); // Create an access token (expires in 15 minutes)
+  const refreshToken = jwt.sign(payload, REFRESH_TOKEN_SECRET, {
+    expiresIn: "4h",
+  }); // Create a refresh token (expires in 4 hours)
+  refreshTokens.push(refreshToken); // Store refresh token for later validation
+
+  res.json({ accessToken, refreshToken });
+});
+
+app.post("/refresh", (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res.status(401).json({ error: "Refresh token is required" });
+  }
+
+  if (!refreshTokens.includes(refreshToken)) {
+    return res.status(403).json({ error: "Invalid refresh token" });
+  }
+
+  jwt.verify(refreshToken, REFRESH_TOKEN_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: "Invalid refresh token" });
+    }
+
+    // Generate new access token using the payload from refresh token
+    const payload = { username: user.username, role: user.role };
+    const newAccessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: "15m" });
+    res.json({ accessToken: newAccessToken });
+  });
+});
+
+// Returns an array of messages, accessible to all users with a valid access token
 app.get("/posts", authenticateJWT, (req, res) => {
   res.json(messages);
 });
@@ -131,7 +119,7 @@ const authorizeAdmin = (req, res, next) => {
   }
 };
 
-// POST /posts (Allows an admin to add a new post)
+// Allows an admin to add a new post
 app.post("/posts", authenticateJWT, authorizeAdmin, (req, res) => {
   const { message } = req.body;
 
@@ -141,6 +129,17 @@ app.post("/posts", authenticateJWT, authorizeAdmin, (req, res) => {
 
   posts.push(message);
   res.status(201).json({ message: "Post added successfully", messages });
+});
+
+app.post("/logout", (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res.status(400).json({ error: "Refresh token is required" });
+  }
+
+  refreshTokens = refreshTokens.filter((token) => token !== refreshToken); // Remove the refresh token from our store
+  res.json({ message: "Logged out successfully" });
 });
 
 app.listen(port, () => {
